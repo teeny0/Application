@@ -470,6 +470,12 @@ npm run verify:approval  # ทดสอบระบบอนุมัติผ�
 
 ---
 
+## เอกสารอ้างอิง
+
+- [รายละเอียดการใช้ AI ในการพัฒนา](docs/AI.md) — สิ่งที่ AI ช่วย, บั๊กที่ต้องตรวจเอง, และสิ่งที่ไม่ได้ให้ AI ทำ
+
+---
+
 ## หมายเหตุ
 
 - `proxy.ts` คือชื่อใหม่ของ `middleware.ts` ใน Next.js 16 (ยังรองรับแนวทางเดิม)
@@ -477,34 +483,3 @@ npm run verify:approval  # ทดสอบระบบอนุมัติผ�
 - ไม่มี seed data — ต้องสร้างข้อมูลเครื่องจักรผ่านหน้าเว็บหลังล็อกอินในสิทธิ์ Admin
 - `scripts/verify-approval.mjs` ใช้ `service_role` key จึงต้องรันบนเครื่องนักพัฒนาเท่านั้น
   ห้าม deploy สคริปต์นี้ขึ้น production
-
----
-
-## การใช้ AI ในการพัฒนา
-
-โปรเจกต์นี้พัฒนาโดยใช้ **AI coding assistant (OpenCode / Claude)** เป็นผู้ช่วยหลัก
-โดยมนุษย์เป็นผู้วางแผน ตัดสินใจ และตรวจสอบผลลัพธ์ทุกขั้นตอน
-
-| หัวข้อ | สรุป |
-| --- | --- |
-| **ช่วยออกแบบฐานข้อมูล** | migration 2 ไฟล์, 5 enum, 4 ตาราง, 14 index, RLS 22 policy, 7 ฟังก์ชัน, 2 view |
-| **ช่วยระบบอนุมัติผู้ใช้** | flow สมัคร → รออนุมัติ → เข้าใช้งาน พร้อมหน้า `/pending` และ `/users` |
-| **ช่วยชั้นความปลอดภัย** | บังคับสิทธิ์ 3 ชั้น: RLS → DAL → Server Action |
-| **ช่วย CRUD** | เครื่องจักร, Alarm, งานบำรุง รวมฟอร์มและ validation ด้วย Zod |
-| **ช่วยระบบค้นหา** | `findMachineIdsBySearch()` + `escapeLikePattern()` กัน SQL injection |
-| **ช่วย Dark mode** | เลือกวิธี override ตัวแปรสี Tailwind แทนการเขียน `dark:` 190 จุด |
-| **ช่วยสคริปต์ทดสอบ** | `verify-approval.mjs` (10/10), `check-dark-contrast.mjs` (36/36) |
-| **ช่วยเอกสารและ CI** | README และ `.github/workflows/ci.yml` |
-
-### บั๊กที่ AI ทำผิดและต้องตรวจเอง
-
-AI ไม่ได้ถูกต้องเสมอไป ระหว่างพัฒนาพบ 5 จุดที่ต้องแก้เอง
-
-1. **คอนทราสต์สีใน dark mode** — เดาค่า oklch ผิด และลืม override ชั้น `-800` ของ 3 สี
-   ทำให้ป้ายสถานะมองไม่ออก (แก้โดยเขียนสคริปต์คำนวณ WCAG จริง)
-2. **React hooks** — ใช้ `setState` ใน `useEffect` ซึ่ง ESLint ไม่อนุญาต
-3. **`package-lock.json` ไม่ sync** — ทำให้ `npm ci` ล้มใน CI
-4. **ความปลอดภัยของ secret** — ต้องสแกน staged content ก่อน commit ทุกครั้ง
-5. **การอ่านเอกสาร Next.js 16** — มี breaking changes ต้องอ่าน `node_modules/next/dist/docs/`
-
-> รายละเอียดทั้งหมด รวมถึงสิ่งที่ไม่ได้ให้ AI ทำ อ่านที่ **[`docs/AI.md`](docs/AI.md)**
