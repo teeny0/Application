@@ -1,7 +1,7 @@
 # ระบบจัดการการบำรุงเครื่องจักร (Machine Maintenance Management)
 
 ![CI](https://github.com/teeny0/Application/actions/workflows/ci.yml/badge.svg)
-[![Vercel](https://img.shields.io/badge/vercel-live-black)](https://github.com/teeny0/Application)
+[![Vercel](https://img.shields.io/badge/vercel-live-black)](https://app-xi-beige-22.vercel.app)
 
 ระบบจัดการข้อมูลเครื่องจักร, Alarm และงานบำรุง พร้อมระบบล็อกอินและสิทธิ์ผู้ใช้
 ผู้สมัครใหม่ต้องรอผู้ดูแลระบบอนุมัติก่อนจึงจะเข้าใช้งานได้
@@ -11,13 +11,13 @@
 
 | รายการ | ค่า |
 | --- | --- |
-| URL | **[ยังไม่ได้ deploy](https://github.com/teeny0/Application)** — ใส่ลิงก์จริงตรงนี้ |
+| URL | **https://app-xi-beige-22.vercel.app** |
 | Branch ที่ deploy | `main` |
 | Build command | `npm run build` |
 
-> ตอน deploy ต้องตั้ง Environment Variables ใน Vercel ครบทั้ง 4 ตัว
-> และเปลี่ยน `NEXT_PUBLIC_SITE_URL` เป็นโดเมนจริง
-> (ถ้าเป็นโดเมน preview ของ Vercel ให้ใส่ URL แบบ preview ด้วย เพราะลิงก์ยืนยันอีเมลจะพากลับมาที่ URL นั้น)
+> ตั้ง Environment Variables ใน Vercel แล้ว 3 ตัว
+> (`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`)
+> การยืนยันอีเมลถูกปิดไว้ ผู้สมัครใหม่จึงเข้าใช้งานได้ทันทีโดยรอการอนุมัติ
 
 ---
 
