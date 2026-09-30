@@ -158,9 +158,8 @@ profiles  ──1:N──> maintenance_records (created_by / technician_id)
 
 ### Index
 
-13 ดัชนี ครอบคลุมการค้นหาที่ใช้จริง เช่น `machines(status)`, `alarms(machine_id)`,
-`alarms(occurred_at desc)`, `maintenance_records(scheduled_at desc)` และ
-ดัชนีค้นหาชื่อเครื่องแบบ `lower(machine_name)`
+14 ดัชนี ครอบคลุมการค้นหาที่ใช้จริง เช่น `machines_status_idx`, `alarms_occurred_idx`,
+`maintenance_sched_idx` และ `profiles_pending_idx`
 
 ### Row Level Security
 
@@ -486,36 +485,26 @@ npm run verify:approval  # ทดสอบระบบอนุมัติผ�
 โปรเจกต์นี้พัฒนาโดยใช้ **AI coding assistant (OpenCode / Claude)** เป็นผู้ช่วยหลัก
 โดยมนุษย์เป็นผู้วางแผน ตัดสินใจ และตรวจสอบผลลัพธ์ทุกขั้นตอน
 
-### สิ่งที่ AI ช่วยได้
-
-| หัวข้อ | รายละเอียด |
+| หัวข้อ | สรุป |
 | --- | --- |
-| **ออกแบบฐานข้อมูล** | เขียน migration 001/002 พร้อม enum, CHECK constraint, index 13 ตัว, RLS policy และฟังก์ชัน `current_role()` / `is_approved()` / `protect_profile_approval()` |
-| **ระบบอนุมัติผู้ใช้** | ออกแบบ flow สมัคร → รออนุมัติ → เข้าใช้งาน, เขียน `/pending`, `/users` และ Server Actions |
-| **ชั้นความปลอดภัย 3 ชั้น** | ช่วยคิดว่าต้องบังคับสิทธิ์ที่ RLS, DAL และ Server Action พร้อมกัน ไม่พึ่งซ่อนปุ่มใน UI อย่างเดียว |
-| **CRUD ทั้งระบบ** | เครื่องจักร, Alarm, งานบำรุง รวมถึงฟอร์ม, validation ด้วย Zod และตารางแสดงผล |
-| **ระบบค้นหาข้ามตาราง** | แก้ปัญหาค้นหา Alarm/งานบำรุงด้วยชื่อเครื่อง โดยใช้ `findMachineIdsBySearch()` + `escapeLikePattern()` กัน SQL injection และ `%` ในคำค้น |
-| **Dark mode** | เลือกวิธี override ตัวแปรสี Tailwind แทนการเขียน `dark:` 190 จุด |
-| **สคริปต์ทดสอบ** | `verify-approval.mjs` (10/10) และ `check-dark-contrast.mjs` |
-| **เอกสาร** | README, CI workflow และคำอธิบายส่วนต่าง ๆ |
+| **ช่วยออกแบบฐานข้อมูล** | migration 2 ไฟล์, 5 enum, 4 ตาราง, 14 index, RLS 22 policy, 7 ฟังก์ชัน, 2 view |
+| **ช่วยระบบอนุมัติผู้ใช้** | flow สมัคร → รออนุมัติ → เข้าใช้งาน พร้อมหน้า `/pending` และ `/users` |
+| **ช่วยชั้นความปลอดภัย** | บังคับสิทธิ์ 3 ชั้น: RLS → DAL → Server Action |
+| **ช่วย CRUD** | เครื่องจักร, Alarm, งานบำรุง รวมฟอร์มและ validation ด้วย Zod |
+| **ช่วยระบบค้นหา** | `findMachineIdsBySearch()` + `escapeLikePattern()` กัน SQL injection |
+| **ช่วย Dark mode** | เลือกวิธี override ตัวแปรสี Tailwind แทนการเขียน `dark:` 190 จุด |
+| **ช่วยสคริปต์ทดสอบ** | `verify-approval.mjs` (10/10), `check-dark-contrast.mjs` (36/36) |
+| **ช่วยเอกสารและ CI** | README และ `.github/workflows/ci.yml` |
 
-### จุดที่มนุษย์ต้องตรวจเอง (ไม่ควรรับความเชื่อ AI 100%)
+### บั๊กที่ AI ทำผิดและต้องตรวจเอง
 
-1. **คอนทราสต์ของสี** — AI ครั้งแรกเดาค่าสี oklch ผิด ทำให้ตัวอักษรอ่านไม่ออก
-   จึงต้องเขียน `check-dark-contrast.mjs` แปลง oklch → sRGB แล้วคำนวณ WCAG จริง
-   ผลคือพบบั๊กที่ลืม override ชั้น `red-800` / `emerald-800` / `blue-800` ทำให้ป้ายสถานะ
-   ตัวอักษรเข้มอยู่บนพื้นเข้มจนมองไม่เห็น
-2. **ความปลอดภัยของ secret** — ต้องสแกน staged content ด้วยตัวเองก่อน push
-   เพื่อยืนยันว่า `.env.local` ไม่ถูก commit และ `SUPABASE_SERVICE_ROLE_KEY`
-   ไม่หลุดไปที่ไฟล์อื่น
-3. **RLS policy** — ต้องรัน migration จริงบน Supabase และทดสอบด้วย `verify-approval.mjs`
-   ว่าผู้ที่ยังไม่อนุมัติอ่านข้อมูลไม่ได้จริง
-4. **CI** — ต้องรัน `npm ci` / `build` / `lint` จริงก่อน ไม่ใช่เชื่อว่าไฟล์ workflow ถูกต้อง
-   (ระหว่างทำพบว่า `package-lock.json` ไม่ sync กับ `package.json` จน `npm ci` ล้ม)
+AI ไม่ได้ถูกต้องเสมอไป ระหว่างพัฒนาพบ 5 จุดที่ต้องแก้เอง
 
-### สิ่งที่ไม่ได้ให้ AI ทำ
+1. **คอนทราสต์สีใน dark mode** — เดาค่า oklch ผิด และลืม override ชั้น `-800` ของ 3 สี
+   ทำให้ป้ายสถานะมองไม่ออก (แก้โดยเขียนสคริปต์คำนวณ WCAG จริง)
+2. **React hooks** — ใช้ `setState` ใน `useEffect` ซึ่ง ESLint ไม่อนุญาต
+3. **`package-lock.json` ไม่ sync** — ทำให้ `npm ci` ล้มใน CI
+4. **ความปลอดภัยของ secret** — ต้องสแกน staged content ก่อน commit ทุกครั้ง
+5. **การอ่านเอกสาร Next.js 16** — มี breaking changes ต้องอ่าน `node_modules/next/dist/docs/`
 
-- ไม่ได้ให้ AI เขียน migration จากนิยามโจทย์โดยไม่ตรวจ — ทุก constraint
-  ตรวจทีละตัวก่อนรันบนฐานข้อมูลจริง
-- ผลทดสอบใน browser (สลับธีม, ดูความคมชัด, ทดสอบปุ่มต่าง ๆ) ต้องทำด้วยมือ
-- การ deploy ขึ้น Vercel และการตั้งค่า secret ใน production ต้องทำเอง
+> รายละเอียดทั้งหมด รวมถึงสิ่งที่ไม่ได้ให้ AI ทำ อ่านที่ **[`docs/AI.md`](docs/AI.md)**
