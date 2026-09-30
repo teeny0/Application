@@ -1,7 +1,7 @@
 # ระบบจัดการการบำรุงเครื่องจักร (Machine Maintenance Management)
 
 ![CI](https://github.com/teeny0/Application/actions/workflows/ci.yml/badge.svg)
-[![Vercel](https://img.shields.io/badge/vercel-live-black)](https://app-xi-beige-22.vercel.app)
+[![Vercel](https://img.shields.io/badge/vercel-live-black)](https://application.vercel.app)
 
 ระบบจัดการข้อมูลเครื่องจักร, Alarm และงานบำรุง พร้อมระบบล็อกอินและสิทธิ์ผู้ใช้
 ผู้สมัครใหม่ต้องรอผู้ดูแลระบบอนุมัติก่อนจึงจะเข้าใช้งานได้
@@ -11,7 +11,7 @@
 
 | รายการ | ค่า |
 | --- | --- |
-| URL | **https://app-xi-beige-22.vercel.app** |
+| URL | **https://application.vercel.app** |
 | Branch ที่ deploy | `main` |
 | Build command | `npm run build` |
 
