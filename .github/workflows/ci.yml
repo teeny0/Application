@@ -36,8 +36,18 @@ jobs:
           npm -v
 
       # 1) Install Dependencies
+      # ถ้าล้ม ให้ยิงข้อความ error ของ npm ออกมาเป็น annotation
+      # เพื่อไม่ต้องเปิด log เพื่อดูว่าล้มที่อะไร
       - name: Install Dependencies
-        run: npm ci --no-audit --no-fund
+        run: |
+          set -o pipefail
+          npm ci --no-audit --no-fund 2>&1 | tee /tmp/npm-ci.log
+          status=${PIPESTATUS[0]}
+          if [ "$status" -ne 0 ]; then
+            msg=$(grep -E 'npm (error|ERR!)' /tmp/npm-ci.log | head -25 | sed 's/%/%25/g' | tr '\n' ' ')
+            echo "::error title=npm ci failed (exit $status)::$msg"
+          fi
+          exit $status
 
       # 2) Build Project
       # ไม่ต้องใส่ secret: lib/env.ts ตรวจว่ามีค่า env หรือไม่ และแสดงข้อความแนะนำ
