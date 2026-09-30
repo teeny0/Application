@@ -56,6 +56,11 @@
 
 ฐานข้อมูล PostgreSQL ของ Supabase (schema `public`) มี 4 ตาราง 2 view และ 7 ฟังก์ชัน
 
+> **ไฟล์ schema ฉบับรวม:** [`supabase/schema.sql`](supabase/schema.sql)
+> รวมทุกอย่างไว้ในไฟล์เดียว (DDL ล้วน ไม่มีข้อมูลตัวอย่าง)
+> วางใน Supabase SQL Editor แล้ว Run ครั้งเดียวก็ได้ฐานข้อมูลครบ
+> ถ้าต้องการดูไฟล์ต้นทางแยกตามขั้นตอน อยู่ที่ `supabase/migrations/`
+
 ### ความสัมพันธ์ของข้อมูล
 
 ```
