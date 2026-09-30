@@ -1,0 +1,51 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# ยกเลิกรอบเก่าถ้ามี push ใหม่เข้ามา branch เดิม
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Install → Build → Lint → Test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      # 1) Install Dependencies
+      - name: Install Dependencies
+        run: npm ci
+
+      # 2) Build Project
+      # ไม่ต้องใส่ secret: lib/env.ts ตรวจว่ามีค่า env หรือไม่ และแสดงข้อความแนะนำ
+      # แทนการ throw ดังนั้น build ผ่านได้แม้ยังไม่ได้ตั้งค่า Supabase
+      - name: Build Project
+        run: npm run build
+
+      # 3) Lint
+      - name: Lint
+        run: npm run lint
+
+      - name: TypeScript
+        run: npx tsc --noEmit
+
+      # 4) Test
+      - name: Test (dark palette contrast, WCAG AA)
+        run: npm run check:contrast

@@ -1,12 +1,197 @@
 # ระบบจัดการการบำรุงเครื่องจักร (Machine Maintenance Management)
 
+![CI](https://github.com/teeny0/Application/actions/workflows/ci.yml/badge.svg)
+[![Vercel](https://img.shields.io/badge/vercel-live-black)](https://github.com/teeny0/Application)
+
 ระบบจัดการข้อมูลเครื่องจักร, Alarm และงานบำรุง พร้อมระบบล็อกอินและสิทธิ์ผู้ใช้
 ผู้สมัครใหม่ต้องรอผู้ดูแลระบบอนุมัติก่อนจึงจะเข้าใช้งานได้
 สร้างด้วย **Next.js 16 (App Router) + TypeScript + Tailwind CSS 4 + Supabase**
 
+## เว็บไซต์ที่ Deploy แล้ว (Vercel)
+
+| รายการ | ค่า |
+| --- | --- |
+| URL | **[ยังไม่ได้ deploy](https://github.com/teeny0/Application)** — ใส่ลิงก์จริงตรงนี้ |
+| Branch ที่ deploy | `main` |
+| Build command | `npm run build` |
+
+> ตอน deploy ต้องตั้ง Environment Variables ใน Vercel ครบทั้ง 4 ตัว
+> และเปลี่ยน `NEXT_PUBLIC_SITE_URL` เป็นโดเมนจริง
+> (ถ้าเป็นโดเมน preview ของ Vercel ให้ใส่ URL แบบ preview ด้วย เพราะลิงก์ยืนยันอีเมลจะพากลับมาที่ URL นั้น)
+
 ---
 
-## 1. ติดตั้ง Dependencies
+## 1. Technology Stack
+
+| เทคโนโลยี | เวอร์ชัน | ใช้ทำอะไร |
+| --- | --- | --- |
+| **Next.js** | 16.3.7 (App Router) | เฟรมเวิร์กหลัก, Server Actions, Route Handlers |
+| **React** | 19.2.8 | UI |
+| **TypeScript** | 5.x | ตรวจชนิดข้อมูลทั้งโปรเจกต์ (strict) |
+| **Tailwind CSS** | 4.3.3 | สไตล์ + ระบบ dark mode |
+| **Supabase** | PostgreSQL | ฐานข้อมูล, Row Level Security, Auth, Storage |
+| `@supabase/ssr` | 0.12.x | จัดการ session cookie ฝั่ง server (SSR) |
+| `@supabase/supabase-js` | 2.117.x | client ของ Supabase |
+| **Zod** | 4.x | ตรวจสอบข้อมูลฟอร์มทุกช่องก่อนเขียน DB |
+| **GitHub Actions** | — | CI ตรวจ Install → Build → Lint → Test อัตโนมัติ |
+| **Vercel** | — | Hosting (วางแผน deploy) |
+
+### Function หลัก
+
+| ฟีเจอร์ | รายละเอียด |
+| --- | --- |
+| **Dashboard** | สรุปจำนวนเครื่อง/Alarm/งานบำรุง + กราฟแท่ง 7 วัน + สถานะรายเครื่อง |
+| **Machine Master** | CRUD เครื่องจักร (รหัส, ชื่อ, ประเภท, สถานที่, สถานะ) — Admin เท่านั้นที่แก้ได้ |
+| **Alarm Record** | บันทึก/แก้ไข Alarm, ผูกกับเครื่อง, มอบหมายช่าง, เปลี่ยนสถานะ |
+| **Maintenance Record** | งานบำรุงตามรอบ, กำหนดกำหนดเวลา, ต้นทุน, อะไหล่, ช่างผู้รับผิดชอบ |
+| **ระบบอนุมัติผู้ใช้** | ผู้สมัครใหม่รออนุมัติจาก Admin ก่อนเข้าใช้งาน |
+| **จัดการสิทธิ์** | 3 ระดับ: RLS → DAL → Server Action |
+| **ค้นหา/กรอง** | ค้นหาแบบข้ามตาราง + กรองหลายเงื่อนไขผ่าน query string |
+| **Dark mode** | สลับสว่าง/มืด จำค่าไว้ + ตามค่าระบบปฏิบัติการ |
+| **CI** | ตรวจอัตโนมัติทุกครั้งที่ push |
+
+---
+
+## 2. Database Structure
+
+ฐานข้อมูล PostgreSQL ของ Supabase (schema `public`) มี 4 ตาราง 2 view และ 7 ฟังก์ชัน
+
+### ความสัมพันธ์ของข้อมูล
+
+```
+auth.users ──1:1──> profiles
+machines  ──1:N──> alarms
+machines  ──1:N──> maintenance_records
+profiles  ──1:N──> alarms (reported_by / assigned_to)
+profiles  ──1:N──> maintenance_records (created_by / technician_id)
+```
+
+- การลบเครื่องจักรจะ **ลบ Alarm และงานบำรุงของเครื่องนั้นทิ้งด้วย** (`ON DELETE CASCADE`)
+- การลบผู้ใช้จะตั้ง `created_by` / `assigned_to` เป็น `NULL` (`ON DELETE SET NULL`)
+
+### ตาราง
+
+**`profiles`** — ข้อมูลผู้ใช้ 1 ต่อ 1 กับ `auth.users`
+สร้างอัตโนมัติโดย trigger `handle_new_user()` เมื่อมีผู้สมัครใหม่
+
+| คอลัมน์ | ชนิด | หมายเหตุ |
+| --- | --- | --- |
+| `id` | `uuid` PK | อ้างอิง `auth.users(id)` |
+| `email` | `text` | |
+| `full_name` | `text` | |
+| `role` | `app_role` | `admin` \| `technician` (ค่าเริ่มต้น `technician`) |
+| `is_approved` | `boolean` | เพิ่มจาก migration 002 — ต้องผ่านการอนุมัติก่อน |
+| `approved_at` | `timestamptz` | เวลาที่อนุมัติ |
+| `approved_by` | `uuid` | ผู้อนุมัติ |
+| `created_at` / `updated_at` | `timestamptz` | |
+
+**`machines`** — ข้อมูลเครื่องจักรหลัก
+
+| คอลัมน์ | ชนิด | หมายเหตุ |
+| --- | --- | --- |
+| `id` | `uuid` PK | |
+| `machine_code` | `text` **unique** | Machine ID |
+| `machine_name` | `text` | Machine Name |
+| `machine_type` | `text` | Machine Type |
+| `location` | `text` | Location |
+| `status` | `machine_status` | `running` \| `stop` \| `alarm` \| `maintenance` |
+| `description` | `text` | |
+| `created_by` | `uuid` → `profiles` | |
+| `created_at` / `updated_at` | `timestamptz` | |
+
+**`alarms`** — บันทึก Alarm ของเครื่องจักร
+
+| คอลัมน์ | ชนิด | หมายเหตุ |
+| --- | --- | --- |
+| `id` | `uuid` PK | |
+| `machine_id` | `uuid` → `machines` | CASCADE |
+| `alarm_code` | `text` | Alarm Code |
+| `alarm_description` | `text` | Alarm Description |
+| `occurred_at` | `timestamptz` | เวลาที่เกิด Alarm |
+| `cause` | `text` | สาเหตุ |
+| `status` | `alarm_status` | `open` \| `in_progress` \| `closed` |
+| `reported_by` | `uuid` → `profiles` | ผู้แจ้ง |
+| `assigned_to` | `uuid` → `profiles` | ช่างที่ได้รับมอบหมาย |
+| `resolved_at` | `timestamptz` | ต้องมีเมื่อ status = `closed` (บังคับด้วย CHECK) |
+| `created_at` / `updated_at` | `timestamptz` | |
+
+**`maintenance_records`** — งานบำรุง
+
+| คอลัมน์ | ชนิด | หมายเหตุ |
+| --- | --- | --- |
+| `id` | `uuid` PK | |
+| `machine_id` | `uuid` → `machines` | CASCADE |
+| `title` | `text` | |
+| `description` | `text` | |
+| `scheduled_at` | `timestamptz` | กำหนดเวลา/นัดหมาย |
+| `completed_at` | `timestamptz` | ต้องมีเมื่อ status = `completed` (บังคับด้วย CHECK) |
+| `status` | `maintenance_status` | `pending` \| `in_progress` \| `completed` \| `cancelled` |
+| `priority` | `maintenance_priority` | `low` \| `medium` \| `high` \| `critical` |
+| `cost` | `numeric(12,2)` | ≥ 0 (บังคับด้วย CHECK) |
+| `parts_used` | `text` | อะไหล่ที่ใช้ |
+| `notes` | `text` | |
+| `created_by` / `technician_id` | `uuid` → `profiles` | |
+| `created_at` / `updated_at` | `timestamptz` | |
+
+### Enum
+
+`app_role` · `machine_status` · `alarm_status` · `maintenance_status` · `maintenance_priority`
+
+### View
+
+| View | ใช้ทำอะไร |
+| --- | --- |
+| `machine_status_counts` | นับจำนวนเครื่องแยกตามสถานะ (Dashboard) |
+| `alarm_status_counts` | นับจำนวน Alarm แยกตามสถานะ (Dashboard) |
+
+### Function และ Trigger
+
+| ชื่อ | หน้าที่ |
+| --- | --- |
+| `handle_new_user()` | สร้างแถวใน `profiles` อัตโนมัติเมื่อมีผู้สมัครใหม่ |
+| `set_updated_at()` | อัปเดต `updated_at` ทุกครั้งที่แก้ไข |
+| `current_role()` | คืน role ของผู้ใช้ปัจจุบัน |
+| `is_admin()` | ตรวจว่าเป็น admin |
+| `is_approved()` | ตรวจสถานะอนุมัติ (ใช้ใน RLS) |
+| `can_access_system()` | ตรวจว่าเข้าใช้งานได้ (ใช้ใน RLS) |
+| `protect_profile_approval()` | กันไม่ให้ผู้ใช้อนุมัติ/ยกเลิกสิทธิ์ตัวเอง |
+
+### Index
+
+13 ดัชนี ครอบคลุมการค้นหาที่ใช้จริง เช่น `machines(status)`, `alarms(machine_id)`,
+`alarms(occurred_at desc)`, `maintenance_records(scheduled_at desc)` และ
+ดัชนีค้นหาชื่อเครื่องแบบ `lower(machine_name)`
+
+### Row Level Security
+
+RLS เปิดใช้งานทุกตาราง โดย policy คิดจาก `current_role()` / `is_approved()`
+ผู้ที่ยังไม่ได้รับอนุมัติจะอ่าน/เขียนข้อมูลหลักไม่ได้แม้จะล็อกอินผ่านแล้วก็ตาม
+
+---
+
+## 3. GitHub Actions (CI)
+
+ไฟล์ workflow: [`.github/workflows/ci.yml`](.github/workflows/ci.yml)
+
+ทำงานอัตโนมัติทุกครั้งที่ push เข้า `main` และทุก Pull Request
+
+| ขั้นตอน | คำสั่ง | หน้าที่ |
+| --- | --- | --- |
+| 1. Install Dependencies | `npm ci` | ติดตั้งแบบตรงกับ lock file |
+| 2. Build Project | `npm run build` | compile + TypeScript + prerender |
+| 3. Lint | `npm run lint` | ESLint |
+| 4. TypeScript | `npx tsc --noEmit` | ตรวจชนิดข้อมูล |
+| 5. Test | `npm run check:contrast` | ตรวจคอนทราสต์ dark palette ตาม WCAG AA |
+
+ผลลัพธ์จะแสดงเป็นเครื่องหมาย ✓ หรือ ✗ ที่มุมบนซ้ายของหน้า repository
+และดูรายละเอียดแต่ละขั้นตอนได้ที่แท็บ **Actions**
+
+> CI ไม่ต้องใช้ secret ใด ๆ เพราะ `lib/env.ts` ตรวจว่ามีค่า environment หรือไม่
+> และแสดงข้อความแนะนำบนหน้า Login แทนการ throw error
+
+---
+
+## 4. ติดตั้ง Dependencies
 
 ```bash
 npm install
@@ -24,7 +209,7 @@ npm install
 
 ---
 
-## 2. ตั้งค่า Environment Variables
+## 5. ตั้งค่า Environment Variables
 
 ```bash
 cp .env.example .env.local
@@ -53,7 +238,7 @@ cp .env.example .env.local
 
 ---
 
-## 3. สร้างตารางในฐานข้อมูล
+## 6. สร้างตารางในฐานข้อมูล
 
 เปิด **Supabase Dashboard → SQL Editor** แล้ววางเนื้อหาไฟล์
 [`supabase/migrations/001_init.sql`](supabase/migrations/001_init.sql) แล้วกด **Run**
@@ -83,10 +268,10 @@ machines  ──1:N──> maintenance_records
 
 ---
 
-## 3.1 เพิ่มระบบอนุมัติผู้ใช้
+## 6.1 เพิ่มระบบอนุมัติผู้ใช้
 
 รันไฟล์ [`supabase/migrations/002_user_approval.sql`](supabase/migrations/002_user_approval.sql)
-ต่อจากข้อ 3 (แยก query อีกครั้ง)
+ต่อจากข้อ 6 (แยก query อีกครั้ง)
 
 ไฟล์นี้จะเพิ่ม:
 
@@ -110,7 +295,7 @@ machines  ──1:N──> maintenance_records
 
 ---
 
-## 4. สร้างบัญชีผู้ดูแลระบบ (Admin) คนแรก
+## 7. สร้างบัญชีผู้ดูแลระบบ (Admin) คนแรก
 
 1. ไปที่ **Supabase Dashboard → Authentication → Users → Add user**
 2. สร้างบัญชี Admin 1 บัญชี (ติ๊กยืนยันอีเมลถ้าต้องการให้ล็อกอินได้ทันที)
@@ -132,7 +317,7 @@ UPDATE profiles SET role = 'admin' WHERE email = 'you@example.com';
 
 ---
 
-## 5. เริ่มระบบ
+## 8. เริ่มระบบ
 
 ```bash
 npm run dev
@@ -198,8 +383,10 @@ app/
   login/                      # หน้าเข้าสู่ระบบ
   signup/                     # หน้าสมัครบัญชีช่าง (เปิดให้สาธารณะ)
   pending/                    # หน้า "รอการอนุมัติ" สำหรับผู้สมัครใหม่
-  globals.css                 # สีและสไตล์ทั้งระบบ (Tailwind v4)
+  globals.css                 # สี สไตล์ และ dark palette (Tailwind v4)
 components/
+  theme-script.tsx            # ตั้งธีมก่อน paint ไม่ให้กะพริบสี
+  theme-toggle.tsx            # ปุ่มสลับโหมดสว่าง/มืด
   app-nav.tsx                 # เมนูหลัก (แสดงเมนู "ผู้ใช้" เฉพาะ Admin)
   logout-button.tsx
   ui/                         # component ร่วม: Card, Badge, Form, SubmitButton, charts
@@ -220,9 +407,30 @@ lib/
   validation.ts              # Zod schema ของทุกฟอร์ม
 proxy.ts                      # ต่ออายุ session + optimistic redirect
 scripts/verify-approval.mjs   # สคริปต์ทดสอบระบบอนุมัติผู้ใช้ผ่าน REST API
+scripts/check-dark-contrast.mjs  # ตรวจคอนทราสต์ dark palette ตาม WCAG AA
 supabase/migrations/001_init.sql
 supabase/migrations/002_user_approval.sql
+.github/workflows/ci.yml      # GitHub Actions: Install → Build → Lint → Test
 ```
+
+### ระบบ Dark Mode
+
+ไม่ได้เขียน `dark:` ในทุก component (ซึ่งจะเป็นราว 190 จุด) แต่ใช้วิธี override
+ตัวแปรสีของ Tailwind ทั้งชุดในคลาส `.dark` ใน `app/globals.css` ทำให้คลาสที่เขียนไว้แล้ว
+อย่าง `bg-slate-50`, `text-slate-900`, `border-slate-200` หรือแม้แต่ `bg-white` / `text-white`
+เปลี่ยนความหมายอัตโนมัติตามธีม
+
+หลักการคือ "สลับโทนสีนิวทรัล" — เลขต่ำกว่า = อ่อนกว่า เมื่อเป็นโหมดมืดจึงกลับด้านกัน
+
+- พื้นผิวอ่อน → พื้นผิวเข้ม (`bg-slate-50` → slate-950, `bg-white` → slate-100)
+- ตัวอักษรเข้ม → ตัวอักษรอ่อน (`text-slate-900` → slate-50)
+- ปุ่มหลักกลับเป็นสีสว่าง (`bg-slate-900` → slate-50) แล้ว `text-white`
+  ถูกสลับเป็นสีเข้มโดยอัตโนมัติ
+
+ธีมถูกอ่านจาก `localStorage` (คีย์ `app-theme`) และค่าของระบบปฏิบัติการ
+โดยสคริปต์ inline ที่รันก่อน browser วาดหน้า จึงไม่เห็นหน้าขาวแวบก่อนเปลี่ยนเป็นสีเข้ม
+
+สีกราฟที่เดิมเขียนเป็นค่า hex ตรง ๆ ถูกเปลี่ยนเป็น `var(--color-*)` เพื่อให้เปลี่ยนตามธีมด้วย
 
 ---
 
@@ -247,6 +455,7 @@ npm run build            # build สำหรับ production
 npm run start            # รัน production server
 npm run lint             # ตรวจ lint
 npx tsc --noEmit         # ตรวจ TypeScript
+npm run check:contrast   # ตรวจคอนทราสต์ dark palette (WCAG AA)
 npm run verify:approval  # ทดสอบระบบอนุมัติผู้ใช้ (ต้องรัน 002 แล้ว)
 ```
 
@@ -269,3 +478,44 @@ npm run verify:approval  # ทดสอบระบบอนุมัติผ�
 - ไม่มี seed data — ต้องสร้างข้อมูลเครื่องจักรผ่านหน้าเว็บหลังล็อกอินในสิทธิ์ Admin
 - `scripts/verify-approval.mjs` ใช้ `service_role` key จึงต้องรันบนเครื่องนักพัฒนาเท่านั้น
   ห้าม deploy สคริปต์นี้ขึ้น production
+
+---
+
+## การใช้ AI ในการพัฒนา
+
+โปรเจกต์นี้พัฒนาโดยใช้ **AI coding assistant (OpenCode / Claude)** เป็นผู้ช่วยหลัก
+โดยมนุษย์เป็นผู้วางแผน ตัดสินใจ และตรวจสอบผลลัพธ์ทุกขั้นตอน
+
+### สิ่งที่ AI ช่วยได้
+
+| หัวข้อ | รายละเอียด |
+| --- | --- |
+| **ออกแบบฐานข้อมูล** | เขียน migration 001/002 พร้อม enum, CHECK constraint, index 13 ตัว, RLS policy และฟังก์ชัน `current_role()` / `is_approved()` / `protect_profile_approval()` |
+| **ระบบอนุมัติผู้ใช้** | ออกแบบ flow สมัคร → รออนุมัติ → เข้าใช้งาน, เขียน `/pending`, `/users` และ Server Actions |
+| **ชั้นความปลอดภัย 3 ชั้น** | ช่วยคิดว่าต้องบังคับสิทธิ์ที่ RLS, DAL และ Server Action พร้อมกัน ไม่พึ่งซ่อนปุ่มใน UI อย่างเดียว |
+| **CRUD ทั้งระบบ** | เครื่องจักร, Alarm, งานบำรุง รวมถึงฟอร์ม, validation ด้วย Zod และตารางแสดงผล |
+| **ระบบค้นหาข้ามตาราง** | แก้ปัญหาค้นหา Alarm/งานบำรุงด้วยชื่อเครื่อง โดยใช้ `findMachineIdsBySearch()` + `escapeLikePattern()` กัน SQL injection และ `%` ในคำค้น |
+| **Dark mode** | เลือกวิธี override ตัวแปรสี Tailwind แทนการเขียน `dark:` 190 จุด |
+| **สคริปต์ทดสอบ** | `verify-approval.mjs` (10/10) และ `check-dark-contrast.mjs` |
+| **เอกสาร** | README, CI workflow และคำอธิบายส่วนต่าง ๆ |
+
+### จุดที่มนุษย์ต้องตรวจเอง (ไม่ควรรับความเชื่อ AI 100%)
+
+1. **คอนทราสต์ของสี** — AI ครั้งแรกเดาค่าสี oklch ผิด ทำให้ตัวอักษรอ่านไม่ออก
+   จึงต้องเขียน `check-dark-contrast.mjs` แปลง oklch → sRGB แล้วคำนวณ WCAG จริง
+   ผลคือพบบั๊กที่ลืม override ชั้น `red-800` / `emerald-800` / `blue-800` ทำให้ป้ายสถานะ
+   ตัวอักษรเข้มอยู่บนพื้นเข้มจนมองไม่เห็น
+2. **ความปลอดภัยของ secret** — ต้องสแกน staged content ด้วยตัวเองก่อน push
+   เพื่อยืนยันว่า `.env.local` ไม่ถูก commit และ `SUPABASE_SERVICE_ROLE_KEY`
+   ไม่หลุดไปที่ไฟล์อื่น
+3. **RLS policy** — ต้องรัน migration จริงบน Supabase และทดสอบด้วย `verify-approval.mjs`
+   ว่าผู้ที่ยังไม่อนุมัติอ่านข้อมูลไม่ได้จริง
+4. **CI** — ต้องรัน `npm ci` / `build` / `lint` จริงก่อน ไม่ใช่เชื่อว่าไฟล์ workflow ถูกต้อง
+   (ระหว่างทำพบว่า `package-lock.json` ไม่ sync กับ `package.json` จน `npm ci` ล้ม)
+
+### สิ่งที่ไม่ได้ให้ AI ทำ
+
+- ไม่ได้ให้ AI เขียน migration จากนิยามโจทย์โดยไม่ตรวจ — ทุก constraint
+  ตรวจทีละตัวก่อนรันบนฐานข้อมูลจริง
+- ผลทดสอบใน browser (สลับธีม, ดูความคมชัด, ทดสอบปุ่มต่าง ๆ) ต้องทำด้วยมือ
+- การ deploy ขึ้น Vercel และการตั้งค่า secret ใน production ต้องทำเอง
